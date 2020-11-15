@@ -111,16 +111,55 @@ func (s *Store) Range(bucket string, minTime, maxTime time.Time, handler func(t 
 	})
 }
 
+type bucketHandler func(name []byte, b *bolt.Bucket) error
+
+// ForEachBucket apply a specified handler function
+func (s *Store) ForEachBucket(handleBucket bucketHandler) error {
+	return s.db.View(func(tx *bolt.Tx) error {
+		// Assume bucket exists and has keys
+		err := tx.ForEach(handleBucket)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
+type bucketKeyValueHandler func(name []byte, bucket *bolt.Bucket, key []byte, value []byte) error
+
+func oneBucketForDay(name []byte, bucket *bolt.Bucket, timestamp time.Time, handleKeyValue bucketKeyValueHandler) error {
+	c := bucket.Cursor()
+	prefix := makePrefixKeyDate(timestamp)
+	for key, value := c.Seek(prefix); key != nil && bytes.HasPrefix(key, prefix); key, value = c.Next() {
+		err := handleKeyValue(name, bucket, key, value)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// AllBucketsForDay something something...also does a today function
+func (s *Store) AllBucketsForDay(requestedTime time.Time, handler bucketKeyValueHandler) error {
+	return s.ForEachBucket(func(name []byte, b *bolt.Bucket) error {
+		return oneBucketForDay(name, b, requestedTime, handler)
+	})
+}
+
+func makePrefixKeyDate(timestamp time.Time) []byte {
+	year, month, day := timestamp.Date()
+	bod := time.Date(year, month, day, 0, 0, 0, 0, &time.Location{})
+	return []byte(TimeToString(bod)[:10])
+}
+
 // Today gets the bucket entries for specified date
 func (s *Store) Today(bucket string, prefixTime time.Time, handler func(string, []byte)) {
 	s.db.View(func(tx *bolt.Tx) error {
 		mainBucket := tx.Bucket([]byte(bucket))
 		c := mainBucket.Cursor()
-		year, month, day := prefixTime.Date()
-		bod := time.Date(year, month, day, 0, 0, 0, 0, &time.Location{})
-		prefix := TimeToString(bod)[:10]
-		for k, v := c.Seek([]byte(prefix)); k != nil && bytes.HasPrefix(k, []byte(prefix)); k, v = c.Next() {
-			handler(prefix, v)
+		prefix := makePrefixKeyDate(prefixTime)
+		for k, v := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, v = c.Next() {
+			handler(string(prefix), v)
 		}
 		return nil
 	})

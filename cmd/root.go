@@ -22,7 +22,7 @@ var (
 		Short: "historian is a replacement for your bash history",
 		Long:  `historian stores your history into a queryable database`,
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println("Call your root here...")
+			fmt.Println("Historian")
 			initHomeDir()
 		},
 	}
