@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/sirupsen/logrus"
 	bolt "go.etcd.io/bbolt"
 )
 
@@ -14,6 +15,10 @@ type History struct {
 	historyID int64
 	data      string
 	time      time.Time
+}
+
+func (h History) String() string {
+	return fmt.Sprintf("[%s] %s", h.time.Format(time.RFC3339), h.data)
 }
 
 // Store bolddb structure
@@ -48,8 +53,9 @@ func (s *Store) Dump(bucket string) {
 
 // NewStore to create a storage file
 func NewStore(dbFile string) (*Store, error) {
-	db, err := bolt.Open(dbFile, 0600, nil)
+	db, err := bolt.Open(dbFile, 0777, nil)
 	if err != nil {
+		logrus.Errorf("could not open (%s) [%v]", dbFile, err)
 		return nil, err
 	}
 	return &Store{
