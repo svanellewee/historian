@@ -39,7 +39,7 @@ func (s *Store) Dump(bucket string) {
 		b := tx.Bucket([]byte(bucket))
 		if b != nil {
 			b.ForEach(func(k, v []byte) error {
-				snapshotTime, err := stringToTime(string(k))
+				snapshotTime, err := StringToTime(string(k))
 				if err != nil {
 					return err
 				}
@@ -70,7 +70,7 @@ func (s *Store) Add(currentDirectory string, time time.Time, commandEntry []byte
 		if err != nil {
 			return err
 		}
-		ts := []byte(timeToString(time))
+		ts := []byte(TimeToString(time))
 		err = b.Put(ts, commandEntry)
 		if err != nil {
 			return err
@@ -98,10 +98,10 @@ func (s *Store) Range(bucket string, minTime, maxTime time.Time, handler func(t 
 	s.db.View(func(tx *bolt.Tx) error {
 		mainBucket := tx.Bucket([]byte(bucket))
 		c := mainBucket.Cursor()
-		min := []byte(timeToString(minTime))
-		max := []byte(timeToString(maxTime))
+		min := []byte(TimeToString(minTime))
+		max := []byte(TimeToString(maxTime))
 		for k, v := c.Seek(min); k != nil && bytes.Compare(k, max) <= 0; k, v = c.Next() {
-			tt, err := stringToTime(string(k))
+			tt, err := StringToTime(string(k))
 			if err != nil {
 				return err
 			}
@@ -118,7 +118,7 @@ func (s *Store) Today(bucket string, prefixTime time.Time, handler func(string, 
 		c := mainBucket.Cursor()
 		year, month, day := prefixTime.Date()
 		bod := time.Date(year, month, day, 0, 0, 0, 0, &time.Location{})
-		prefix := timeToString(bod)[:10]
+		prefix := TimeToString(bod)[:10]
 		for k, v := c.Seek([]byte(prefix)); k != nil && bytes.HasPrefix(k, []byte(prefix)); k, v = c.Next() {
 			handler(prefix, v)
 		}
@@ -156,10 +156,12 @@ func (s *Store) Last(directory string, numEntries int) ([]History, error) {
 	return historyList, nil
 }
 
-func timeToString(t time.Time) string {
+// TimeToString converts time to string
+func TimeToString(t time.Time) string {
 	return t.Format(time.RFC3339)
 }
 
-func stringToTime(s string) (time.Time, error) {
+// StringToTime converts string to time
+func StringToTime(s string) (time.Time, error) {
 	return time.Parse(time.RFC3339, s)
 }
