@@ -11,14 +11,15 @@ import (
 
 // History structure
 type History struct {
-	id        int64
-	historyID int64
-	data      string
-	time      time.Time
+	id            int64
+	historyID     int64
+	data          string
+	time          time.Time
+	directoryName string
 }
 
 func (h History) String() string {
-	return fmt.Sprintf("[%s] %s", h.time.Format(time.RFC3339), h.data)
+	return fmt.Sprintf("[%s] %s (%s)", h.time.Format(time.RFC3339), h.data, h.directoryName)
 }
 
 // Store bolddb structure
@@ -32,23 +33,15 @@ func (s *Store) Close() {
 }
 
 // Dump stores
-func (s *Store) Dump(bucket string) {
-	fmt.Println("Dump........", bucket)
-	s.db.View(func(tx *bolt.Tx) error {
-		// Assume bucket exists and has keys
-		b := tx.Bucket([]byte(bucket))
-		if b != nil {
-			b.ForEach(func(k, v []byte) error {
-				snapshotTime, err := StringToTime(string(k))
-				if err != nil {
-					return err
-				}
-				fmt.Printf("key=%s, value=%s\n", snapshotTime.Format(time.RFC3339), string(v))
-				return nil
-			})
-		}
-		return nil
-	})
+func (s *Store) Dump() {
+	history, err := s.All()
+	if err != nil {
+		logrus.Errorf("could not dump bucket %v\n", err)
+		return
+	}
+	for _, history := range history {
+		fmt.Printf("%#v\n", history)
+	}
 }
 
 // NewStore to create a storage file
@@ -125,6 +118,38 @@ func (s *Store) ForEachBucket(handleBucket bucketHandler) error {
 	})
 }
 
+// All entries dumped, with optional filter
+func (s *Store) All(filters ...FilterFunction) ([]History, error) {
+	history := make([]History, 0, 1000)
+	filter := applyFilters(filters...)
+	err := s.ForEachBucket(func(name []byte, b *bolt.Bucket) error {
+		if b != nil {
+			b.ForEach(func(k, v []byte) error {
+				keep := filter(name, k, v)
+				if !keep {
+					return nil
+				}
+				snapshotTime, err := StringToTime(string(k))
+				if err != nil {
+					return err
+				}
+				result := History{
+					time:          snapshotTime,
+					data:          string(v),
+					directoryName: string(name),
+				}
+				history = append(history, result)
+				return nil
+			})
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return history, nil
+}
+
 type bucketKeyValueHandler func(name []byte, bucket *bolt.Bucket, key []byte, value []byte) error
 
 func oneBucketForDay(name []byte, bucket *bolt.Bucket, timestamp time.Time, handleKeyValue bucketKeyValueHandler) error {
@@ -165,26 +190,43 @@ func (s *Store) Today(bucket string, prefixTime time.Time, handler func(string, 
 	})
 }
 
+// FilterFunction provides a type for callback functional options
+type FilterFunction func(bucketName []byte, key []byte, value []byte) bool
+
+func applyFilters(filters ...FilterFunction) FilterFunction {
+	return func(bucketName []byte, key []byte, value []byte) bool {
+		result := true
+		for _, filter := range filters {
+			result = result && filter(bucketName, key, value)
+		}
+		return result
+	}
+}
+
 // Last n entries
-func (s *Store) Last(directory string, numEntries int) ([]History, error) {
+func (s *Store) Last(directory string, numEntries int, filters ...FilterFunction) ([]History, error) {
 	historyList := make([]History, 0, numEntries)
 	err := s.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(directory))
 		c := b.Cursor()
 		i := numEntries
+		filter := applyFilters(filters...)
 		for k, v := c.Last(); k != nil; k, v = c.Prev() {
 			if i <= 0 {
 				break
 			}
-			timeValue, err := time.Parse(time.RFC3339, string(k))
-			if err != nil {
-				return err
+			keep := filter([]byte(directory), k, v)
+			if keep {
+				timeValue, err := time.Parse(time.RFC3339, string(k))
+				if err != nil {
+					return err
+				}
+				historyValue := History{
+					data: string(v),
+					time: timeValue,
+				}
+				historyList = append(historyList, historyValue)
 			}
-			historyValue := History{
-				data: string(v),
-				time: timeValue,
-			}
-			historyList = append(historyList, historyValue)
 			i--
 		}
 		return nil
