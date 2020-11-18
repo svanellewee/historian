@@ -37,6 +37,24 @@ alias hlist="historian last"
 export PROMPT_COMMAND="history-store"
 ```
 
+### Last
+
+To see the last 10 commands used inside *the current directory*, run 
+
+```sh
+historian last 10
+```
+
+### Today
+
+To see all the commands you ran and at what times and where for `today` just ask:
+
+```sh
+historian today
+```
+
+This will give you a sorted list, so you can see what you did. Might be useful for timesheet-y type applications. (Mmmm perhaps I need a `sprint` command as well)
+
 ### Search
 
 Go's regex are used here. Examples:
