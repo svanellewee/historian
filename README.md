@@ -41,24 +41,24 @@ export PROMPT_COMMAND="history-store"
 
 Go's regex are used here. Examples:
 
-- Where did I mispell `PATH`?
+- Where did you mispell `PATH`?
 ```sh
 historian search PAHT 
 ```
 
-- Overkill matches all, probably a bad idea
+- If you write nothing it matches all...probably a bad idea
 
 ```sh
 historian search 
 ```
 
-- I need to find all calls with `bind` and/or `shutdown`
+- You need to find all calls with `bind` and/or `shutdown`
 
 ```sh
 historian search 'bind|shutdown' 
 ```
 
-You wrote this dumb history app called `historian` and now need to write examples for the docs:
+- You wrote this dumb history app called `historian` and now need to write examples for the docs:
 
 ```sh
 historian search 'historian search'
