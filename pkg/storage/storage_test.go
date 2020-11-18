@@ -3,6 +3,7 @@ package storage_test
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"testing"
 	"time"
 
@@ -80,6 +81,7 @@ func TestBucketList(t *testing.T) {
 		return nil
 	})
 	assert.Equal(t, expectedDirectories, actualDirectories)
+
 }
 
 func TestAnother(t *testing.T) {
@@ -118,7 +120,7 @@ func TestAnother(t *testing.T) {
 	err = store.Add(
 		"/home/user",
 		timestamp3,
-		[]byte("echo bla"),
+		[]byte("echo bla2"),
 	)
 	assert.Nil(t, err)
 
@@ -133,8 +135,8 @@ EOF
 	)
 	assert.Nil(t, err)
 
-	store.Dump("/tmp")
-	store.Dump("/home/user2")
+	//store.Dump("/tmp")
+	//store.Dump("/home/user2")
 	minTime := time.Date(2020, 1, 1, 0, 0, 0, 0, &time.Location{})
 	maxTime := time.Date(2020, 1, 3, 0, 0, 2, 0, &time.Location{})
 
@@ -175,5 +177,25 @@ EOF
 	fmt.Println(lastEntries)
 	assert.Nil(t, err)
 	assert.Len(t, lastEntries, 3)
+
+	filter := func(directoryName []byte, key []byte, value []byte) bool {
+		re, err := regexp.Compile("echo")
+		if err != nil {
+			return false
+		}
+		return re.Find(value) != nil
+	}
+	fmt.Println("search/filter")
+
+	results, err := store.All() // maybe we need an store.All function
+	assert.Nil(t, err)
+	assert.Equal(t, 5, len(results))
+
+	filterResults, err := store.All(filter)
+	assert.Nil(t, err)
+	assert.Equal(t, 2, len(filterResults))
+	for _, filterResult := range filterResults {
+		fmt.Println(">>", filterResult)
+	}
 
 }
