@@ -36,3 +36,34 @@ alias hlist="historian last"
 # The secret sauce that makes things work...
 export PROMPT_COMMAND="history-store"
 ```
+
+### Search
+
+Go's regex are used here. Examples:
+
+- Where did I mispell `PATH`?
+```sh
+historian search PAHT 
+```
+
+- Overkill matches all, probably a bad idea
+
+```sh
+historian search 
+```
+
+- I need to find all calls with `bind` and/or `shutdown`
+
+```sh
+historian search 'bind|shutdown' 
+```
+
+You wrote this dumb history app called `historian` and now need to write examples for the docs:
+
+```sh
+historian search 'historian search'
+```
+
+# Why write another bash history?
+
+My motivation is purely to learn go, and to have something useful out of it. If you end up using it too please drop me a line, I'd love to hear your experience or if there's any improvements in useability or code I can make. I'll be making updates as I go.
