@@ -14,11 +14,12 @@ import (
 
 // History structure
 type History struct {
-	id            int64
+	ID            int64
 	historyID     int64
-	data          string
-	time          time.Time
-	directoryName string
+	Data          string
+	Time          time.Time
+	DirectoryName string
+	Annotation    string
 }
 
 // HistOption updates History structs.
@@ -26,21 +27,28 @@ type HistOption func(h *History) error
 
 func SetTime(t time.Time) HistOption {
 	return func(h *History) error {
-		h.time = t
+		h.Time = t
 		return nil
 	}
 }
 
 func SetDirectory(directory string) HistOption {
 	return func(h *History) error {
-		h.directoryName = directory
+		h.DirectoryName = directory
 		return nil
 	}
 }
 
 func SetID(id int64) HistOption {
 	return func(h *History) error {
-		h.id = h.id
+		h.ID = id
+		return nil
+	}
+}
+
+func SetAnnotation(annotation string) HistOption {
+	return func(h *History) error {
+		h.Annotation = annotation
 		return nil
 	}
 }
@@ -53,9 +61,9 @@ func NewHistory(command string, options ...HistOption) (*History, error) {
 	}
 
 	history := &History{
-		time:          time.Now(), // default to current time.
-		directoryName: currentDirectory,
-		data:          command,
+		Time:          time.Now(), // default to current time.
+		DirectoryName: currentDirectory,
+		Data:          command,
 	}
 
 	for _, option := range options {
@@ -79,17 +87,55 @@ func (e ErrIncorrectCount) Error() string {
 
 // Convert strings of form "1234 ls /tmp # some annotation" to a history entry.
 func Convert(input string) (*History, error) {
+	// This is buggy :-/
 	trimmed := strings.Trim(input, " ")
 	elements := strings.SplitN(trimmed, " ", 2)
 	if len(elements) != 2 {
 		return nil, ErrIncorrectCount{ArgumentCount: len(elements), ExpectedCount: 2}
 	}
+
 	number, err := strconv.ParseInt(elements[0], 10, 64)
 	if err != nil {
 		return nil, fmt.Errorf("could not parse error %w", err)
 	}
 
-	history, err := NewHistory(strings.Trim(elements[1], " "), SetID(number))
+	options := []HistOption{
+		SetID(number),
+	}
+
+	history, err := NewHistory(elements[1], options...)
+	if err != nil {
+		return nil, err
+	}
+
+	return history, nil
+}
+
+// _ConvertAnnotate is a broken implementation of convert that does not properly separate comments from commands. Better plan required
+func _ConvertAnnotate(input string) (*History, error) {
+	// This is buggy :-/
+	trimmed := strings.Trim(input, " ")
+	elements := strings.SplitN(trimmed, " ", 2)
+	if len(elements) != 2 {
+		return nil, ErrIncorrectCount{ArgumentCount: len(elements), ExpectedCount: 2}
+	}
+
+	number, err := strconv.ParseInt(elements[0], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("could not parse error %w", err)
+	}
+
+	options := []HistOption{
+		SetID(number),
+	}
+
+	commandElements := strings.SplitN(elements[1], "#", 2)
+	if len(commandElements) > 1 {
+		annotation := strings.Trim(commandElements[1], " ")
+		options = append(options, SetAnnotation(annotation))
+	}
+
+	history, err := NewHistory(strings.Trim(commandElements[0], " "), options...)
 	if err != nil {
 		return nil, err
 	}
@@ -110,14 +156,14 @@ func ConvertOpt(input string) (HistOption, error) {
 	}
 
 	return func(history *History) error {
-		history.id = number
-		history.data = strings.Trim(elements[1], " ")
+		history.ID = number
+		history.Data = strings.Trim(elements[1], " ")
 		return nil
 	}, nil
 }
 
 func (h History) String() string {
-	return fmt.Sprintf("[%s] %s (%s)", h.time.Format(time.RFC3339), h.data, h.directoryName)
+	return fmt.Sprintf("[%s] %s (%s) /*%s*/", h.Time.Format(time.RFC3339), h.Data, h.DirectoryName, h.Annotation)
 }
 
 // Store bolddb structure
@@ -182,22 +228,44 @@ func NewStore(dbFile string, options ...StoreOption) (*Store, error) {
 
 // Add to storage
 func (s *Store) Add(history *History) error {
-	return s.db.Update(func(tx *bolt.Tx) error {
-		b, err := tx.CreateBucketIfNotExists([]byte(history.directoryName))
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		b, err := tx.CreateBucketIfNotExists([]byte(history.DirectoryName))
 		if err != nil {
 			return err
 		}
-		ts := []byte(TimeToString(history.time))
-		err = b.Put(ts, []byte(history.data))
+		ts := []byte(TimeToString(history.Time))
+		err = b.Put(ts, []byte(history.Data))
 		if err != nil {
 			return err
 		}
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	if len(history.Annotation) != 0 {
+		err = s.db.Update(func(tx *bolt.Tx) error {
+			b, err := tx.CreateBucketIfNotExists([]byte(fmt.Sprintf("annotations-%s", history.DirectoryName)))
+			if err != nil {
+				return err
+			}
+			ts := []byte(TimeToString(history.Time))
+			err = b.Put(ts, []byte(history.Annotation))
+			if err != nil {
+				return err
+			}
+			return nil
+		})
+		if err != nil {
+			return fmt.Errorf("could not add annotation for history: %w", err)
+		}
+	}
+
+	return nil
 }
 
 // Get from storage
-func (s *Store) Get(bucket, key string) ([]byte, error) {
+func (s *Store) Get(bucket, key string) (*History, error) {
 	var result []byte
 	err := s.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucket))
@@ -207,7 +275,22 @@ func (s *Store) Get(bucket, key string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return result, nil
+	var annotation []byte
+	err = s.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(fmt.Sprintf("annotations-%s", bucket)))
+		if b == nil {
+			return nil
+		}
+		annotation = b.Get([]byte(key))
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &History{
+		Data:       string(result),
+		Annotation: string(annotation),
+	}, nil
 }
 
 // Range over storage between dates
@@ -258,9 +341,9 @@ func (s *Store) All(filters ...FilterFunction) ([]History, error) {
 					return err
 				}
 				result := History{
-					time:          snapshotTime,
-					data:          string(v),
-					directoryName: string(name),
+					Time:          snapshotTime,
+					Data:          string(v),
+					DirectoryName: string(name),
 				}
 				history = append(history, result)
 				return nil
@@ -332,6 +415,9 @@ func (s *Store) Last(directory string, numEntries int, filters ...FilterFunction
 	historyList := make([]History, 0, numEntries)
 	err := s.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(directory))
+		if b == nil {
+			return fmt.Errorf("no such bucket as %s", directory)
+		}
 		c := b.Cursor()
 		i := numEntries
 		filter := applyFilters(filters...)
@@ -345,9 +431,15 @@ func (s *Store) Last(directory string, numEntries int, filters ...FilterFunction
 				if err != nil {
 					return err
 				}
+				annotationBucket := tx.Bucket([]byte(fmt.Sprintf("annotations-%s", directory)))
+				var annotation string
+				if annotationBucket != nil {
+					annotation = string(annotationBucket.Get(k))
+				}
 				historyValue := History{
-					data: string(v),
-					time: timeValue,
+					Data:       string(v),
+					Time:       timeValue,
+					Annotation: annotation,
 				}
 				historyList = append(historyList, historyValue)
 			}

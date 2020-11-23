@@ -37,14 +37,47 @@ func TestConvertHelper(t *testing.T) {
 			result:     "ls /hello",
 			annotation: "",
 		},
+		// {
+		// 	directory:  "/tmp",
+		// 	timestamp:  time.Date(2020, 1, 1, 0, 2, 0, 0, &time.Location{}),
+		// 	command:    "1234 ls /hello # some annotation",
+		// 	id:         1234,
+		// 	result:     "ls /hello",
+		// 	annotation: "some annotation",
+		// },
+		// 		{
+		// 			directory: "/tmp",
+		// 			timestamp: time.Date(2020, 1, 1, 0, 2, 0, 0, &time.Location{}),
+		// 			command: `1234 cat <<"EOF" | bla # test
+		// some heredoc
+		// yadda
+		// EOF
+		// `,
+		// 			id: 1234,
+		// 			result: `cat <<"EOF" | bla
+		// some heredoc
+		// yadda
+		// EOF`,
+		// 			annotation: "test",
+		// 		},
 	}
+	dbFile := "my.db"
+
+	store, err := storage.NewStore(dbFile)
+	assert.Nil(t, err)
+	defer os.Remove(dbFile)
 
 	for _, testCase := range testCases {
-
-		_, err := storage.Convert(testCase.command)
+		history, err := storage.Convert(testCase.command)
 		assert.Nil(t, err)
 
-		//		assert.EqualValues(t, testCase.result, history.command)
+		assert.Equal(t, testCase.result, history.Data)
+		assert.Equal(t, testCase.id, history.ID)
+		//assert.Equal(t, testCase.annotation, history.Annotation)
+		history.DirectoryName = testCase.directory
+		err = store.Add(history)
+
+		assert.Nil(t, err)
 	}
 }
 
@@ -56,14 +89,16 @@ func TestBucketList(t *testing.T) {
 	defer os.Remove(dbFile)
 
 	testCases := []struct {
-		directory string
-		timestamp time.Time
-		command   string
+		directory  string
+		timestamp  time.Time
+		command    string
+		annotation string
 	}{
 		{
-			directory: "/tmp",
-			timestamp: time.Date(2020, 1, 1, 0, 0, 0, 0, &time.Location{}),
-			command:   "ls",
+			directory:  "/tmp",
+			timestamp:  time.Date(2020, 1, 1, 0, 0, 0, 0, &time.Location{}),
+			command:    "ls",
+			annotation: "some test annotation",
 		},
 		{
 			directory: "/tmp",
@@ -105,6 +140,7 @@ func TestBucketList(t *testing.T) {
 		assert.Nil(t, err)
 	}
 
+	fmt.Println(store.Last("/tmp", 10))
 	expectedDirectories := 2 // tmp tmp2
 	actualDirectories := 0
 	store.ForEachBucket(func(name []byte, _ *bolt.Bucket) error {
