@@ -3,6 +3,9 @@ package storage
 import (
 	"bytes"
 	"fmt"
+	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -18,13 +21,110 @@ type History struct {
 	directoryName string
 }
 
+// HistOption updates History structs.
+type HistOption func(h *History) error
+
+func SetTime(t time.Time) HistOption {
+	return func(h *History) error {
+		h.time = t
+		return nil
+	}
+}
+
+func SetDirectory(directory string) HistOption {
+	return func(h *History) error {
+		h.directoryName = directory
+		return nil
+	}
+}
+
+func SetID(id int64) HistOption {
+	return func(h *History) error {
+		h.id = h.id
+		return nil
+	}
+}
+
+// NewHistory returns a new history entry
+func NewHistory(command string, options ...HistOption) (*History, error) {
+	currentDirectory, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+
+	history := &History{
+		time:          time.Now(), // default to current time.
+		directoryName: currentDirectory,
+		data:          command,
+	}
+
+	for _, option := range options {
+		err := option(history)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return history, nil
+}
+
+// ErrIncorrectCount reports unexpected argument counts.
+type ErrIncorrectCount struct {
+	ArgumentCount int
+	ExpectedCount int
+}
+
+func (e ErrIncorrectCount) Error() string {
+	return fmt.Sprintf("incorrect number of elements, Expected [%d], found [%d]", e.ArgumentCount, e.ExpectedCount)
+}
+
+// Convert strings of form "1234 ls /tmp # some annotation" to a history entry.
+func Convert(input string) (*History, error) {
+	trimmed := strings.Trim(input, " ")
+	elements := strings.SplitN(trimmed, " ", 2)
+	if len(elements) != 2 {
+		return nil, ErrIncorrectCount{ArgumentCount: len(elements), ExpectedCount: 2}
+	}
+	number, err := strconv.ParseInt(elements[0], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("could not parse error %w", err)
+	}
+
+	history, err := NewHistory(strings.Trim(elements[1], " "), SetID(number))
+	if err != nil {
+		return nil, err
+	}
+
+	return history, nil
+}
+
+// ConvertOpt creates a HistoryOpt from the history input string
+func ConvertOpt(input string) (HistOption, error) {
+	trimmed := strings.Trim(input, " ")
+	elements := strings.SplitN(trimmed, " ", 2)
+	if len(elements) != 2 {
+		return nil, ErrIncorrectCount{ArgumentCount: len(elements), ExpectedCount: 2}
+	}
+	number, err := strconv.ParseInt(elements[0], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("could not parse error %w", err)
+	}
+
+	return func(history *History) error {
+		history.id = number
+		history.data = strings.Trim(elements[1], " ")
+		return nil
+	}, nil
+}
+
 func (h History) String() string {
 	return fmt.Sprintf("[%s] %s (%s)", h.time.Format(time.RFC3339), h.data, h.directoryName)
 }
 
 // Store bolddb structure
 type Store struct {
-	db *bolt.DB
+	db            *bolt.DB
+	directoryFunc func() (string, error)
+	timeFunc      func() time.Time
 }
 
 // Close on stores
@@ -44,27 +144,51 @@ func (s *Store) Dump() {
 	}
 }
 
+type StoreOption func(s *Store) error
+
+func defaultStoreCwd(s *Store) error {
+	s.directoryFunc = os.Getwd
+	return nil
+}
+
+func defaultStoreTime(s *Store) error {
+	s.timeFunc = time.Now
+	return nil
+}
+
+var defaultStoreOptions = []StoreOption{
+	defaultStoreTime,
+	defaultStoreCwd,
+}
+
 // NewStore to create a storage file
-func NewStore(dbFile string) (*Store, error) {
+func NewStore(dbFile string, options ...StoreOption) (*Store, error) {
 	db, err := bolt.Open(dbFile, 0777, nil)
 	if err != nil {
 		logrus.Errorf("could not open (%s) [%v]", dbFile, err)
 		return nil, err
 	}
-	return &Store{
+	store := &Store{
 		db: db,
-	}, nil
+	}
+	for _, defaultOpt := range defaultStoreOptions {
+		defaultOpt(store)
+	}
+	for _, option := range options {
+		option(store)
+	}
+	return store, nil
 }
 
 // Add to storage
-func (s *Store) Add(currentDirectory string, time time.Time, commandEntry []byte) error {
+func (s *Store) Add(history *History) error {
 	return s.db.Update(func(tx *bolt.Tx) error {
-		b, err := tx.CreateBucketIfNotExists([]byte(currentDirectory))
+		b, err := tx.CreateBucketIfNotExists([]byte(history.directoryName))
 		if err != nil {
 			return err
 		}
-		ts := []byte(TimeToString(time))
-		err = b.Put(ts, commandEntry)
+		ts := []byte(TimeToString(history.time))
+		err = b.Put(ts, []byte(history.data))
 		if err != nil {
 			return err
 		}

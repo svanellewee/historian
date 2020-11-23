@@ -20,6 +20,34 @@ func TestTimeConvert(t *testing.T) {
 	fmt.Printf("%#v %s", tme, tme)
 }
 
+func TestConvertHelper(t *testing.T) {
+	testCases := []struct {
+		directory  string
+		timestamp  time.Time
+		command    string
+		result     string
+		annotation string
+		id         int64
+	}{
+		{
+			directory:  "/tmp",
+			timestamp:  time.Date(2020, 1, 1, 0, 2, 0, 0, &time.Location{}),
+			command:    "1234 ls /hello",
+			id:         1234,
+			result:     "ls /hello",
+			annotation: "",
+		},
+	}
+
+	for _, testCase := range testCases {
+
+		_, err := storage.Convert(testCase.command)
+		assert.Nil(t, err)
+
+		//		assert.EqualValues(t, testCase.result, history.command)
+	}
+}
+
 func TestBucketList(t *testing.T) {
 	dbFile := "my.db"
 
@@ -65,10 +93,14 @@ func TestBucketList(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
+		history, err := storage.NewHistory(
+			testCase.command,
+			storage.SetDirectory(testCase.directory),
+			storage.SetTime(testCase.timestamp),
+		)
+		assert.Nil(t, err)
 		err = store.Add(
-			testCase.directory,
-			testCase.timestamp,
-			[]byte(testCase.command),
+			history,
 		)
 		assert.Nil(t, err)
 	}
@@ -92,48 +124,51 @@ func TestAnother(t *testing.T) {
 	defer os.Remove(dbFile)
 	timestamp1 := time.Date(2020, 1, 1, 0, 0, 0, 0, &time.Location{})
 	fmt.Println(timestamp1.Format(time.RFC3339), "......!")
-	err = store.Add(
-		"/tmp",
-		timestamp1,
-		[]byte("ls ."),
-	)
-	assert.Nil(t, err)
+	testCases := []struct {
+		directory string
+		timestamp time.Time
+		command   string
+	}{
+		{
+			directory: "/tmp",
+			timestamp: time.Date(2020, 1, 1, 0, 0, 0, 0, &time.Location{}),
+			command:   "ls .",
+		},
+		{
+			directory: "/tmp",
+			timestamp: time.Date(2020, 1, 1, 23, 55, 55, 55, &time.Location{}),
+			command:   "source ./bla",
+		},
+		{
+			directory: "/tmp",
+			timestamp: time.Date(2020, 1, 2, 1, 0, 2, 0, &time.Location{}),
+			command:   "echo bla",
+		},
+		{
+			directory: "/home/user",
+			timestamp: time.Date(2020, 1, 1, 1, 1, 2, 0, &time.Location{}),
+			command:   "echo bla2",
+		},
+		{
+			directory: "/home/user2",
+			timestamp: time.Date(2020, 1, 2, 1, 2, 2, 0, &time.Location{}),
+			command: `cat<<"EOF" > test
+			bla yadda
+			EOF
+			`,
+		},
+	}
 
-	timestamp1a := time.Date(2020, 1, 1, 23, 55, 55, 55, &time.Location{})
-	fmt.Println(timestamp1.Format(time.RFC3339), "......!")
-	err = store.Add(
-		"/tmp",
-		timestamp1a,
-		[]byte("source ./bla"),
-	)
-	assert.Nil(t, err)
-
-	timestamp2 := time.Date(2020, 1, 2, 1, 0, 2, 0, &time.Location{})
-	err = store.Add(
-		"/tmp",
-		timestamp2,
-		[]byte("echo bla"),
-	)
-	assert.Nil(t, err)
-
-	timestamp3 := time.Date(2020, 1, 1, 1, 1, 2, 0, &time.Location{})
-	err = store.Add(
-		"/home/user",
-		timestamp3,
-		[]byte("echo bla2"),
-	)
-	assert.Nil(t, err)
-
-	timestamp4 := time.Date(2020, 1, 2, 1, 2, 2, 0, &time.Location{})
-	err = store.Add(
-		"/home/user2",
-		timestamp4,
-		[]byte(`cat<<"EOF" > test
-bla yadda
-EOF
-`),
-	)
-	assert.Nil(t, err)
+	for _, testCase := range testCases {
+		history, err := storage.NewHistory(
+			testCase.command,
+			storage.SetDirectory(testCase.directory),
+			storage.SetTime(testCase.timestamp),
+		)
+		assert.Nil(t, err)
+		err = store.Add(history)
+		assert.Nil(t, err)
+	}
 
 	//store.Dump("/tmp")
 	//store.Dump("/home/user2")
