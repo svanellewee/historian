@@ -328,7 +328,16 @@ func (s *Store) ForEachBucket(handleBucket bucketHandler) error {
 // All entries dumped, with optional filter
 func (s *Store) All(filters ...FilterFunction) ([]History, error) {
 	history := make([]History, 0, 1000)
-	filter := applyFilters(filters...)
+	filter := func(bucketName []byte, key []byte, value []byte) bool {
+		result := true
+		for _, filterFunction := range filters {
+			result = filterFunction(bucketName, key, value) && result
+			if !result {
+				break
+			}
+		}
+		return result
+	}
 	err := s.ForEachBucket(func(name []byte, b *bolt.Bucket) error {
 		if b != nil {
 			b.ForEach(func(k, v []byte) error {

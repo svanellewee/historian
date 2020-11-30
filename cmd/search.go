@@ -14,7 +14,7 @@ func init() {
 
 var searchCmd = &cobra.Command{
 	Use:   "search",
-	Short: "search an entry into the database, using regex",
+	Short: "search an entry into the database, using regex. Add more regexes to filter further",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var err error
 		store, err := storage.NewStore(HistorianDatabase)
@@ -24,9 +24,9 @@ var searchCmd = &cobra.Command{
 		defer store.Close()
 
 		filters := make([]storage.FilterFunction, 0, 1)
-		if len(args) == 1 {
+		for _, arg := range args {
 			filters = append(filters, func(directoryName []byte, key []byte, value []byte) bool {
-				re, err := regexp.Compile(args[0])
+				re, err := regexp.Compile(arg)
 				if err != nil {
 					return false
 				}

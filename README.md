@@ -39,7 +39,7 @@ export PROMPT_COMMAND="history-store"
 
 ### Last
 
-To see the last 10 commands used inside *the current directory*, run 
+To see the last 10 commands used inside _the current directory_, run
 
 ```sh
 historian last 10
@@ -60,26 +60,39 @@ This will give you a sorted list, so you can see what you did. Might be useful f
 Go's regex are used here. Examples:
 
 - Where did you mispell `PATH`?
+
 ```sh
-historian search PAHT 
+historian search PAHT
 ```
 
 - If you write nothing it matches all...probably a bad idea
 
 ```sh
-historian search 
+historian search
 ```
 
 - You need to find all calls with `bind` and/or `shutdown`
 
 ```sh
-historian search 'bind|shutdown' 
+historian search 'bind|shutdown'
 ```
 
 - You wrote this dumb history app called `historian` and now need to write examples for the docs:
 
 ```sh
 historian search 'historian search'
+```
+
+- Want to filter the filter? No need to shell to grep, rather:
+
+```sh
+historian search while 'tr -s'  # search for commands that had the words `while` and `tr -s` in them
+```
+
+This would be equivalent to:
+
+```sh
+history |grep while |grep 'tr -s'
 ```
 
 # Why write another bash history?
