@@ -152,6 +152,87 @@ func TestBucketList(t *testing.T) {
 
 }
 
+func TestFilter(t *testing.T) {
+	dbFile := "my.db"
+
+	store, err := storage.NewStore(dbFile)
+	assert.Nil(t, err)
+	defer os.Remove(dbFile)
+	timestamp1 := time.Date(2020, 1, 1, 0, 0, 0, 0, &time.Location{})
+	fmt.Println(timestamp1.Format(time.RFC3339), "......!")
+	data := []struct {
+		directory string
+		timestamp time.Time
+		command   string
+	}{
+		{
+			directory: "/tmp",
+			timestamp: time.Date(2020, 1, 1, 0, 0, 0, 0, &time.Location{}),
+			command:   "echo hello world",
+		},
+		{
+			directory: "/dir1",
+			timestamp: time.Date(2020, 1, 1, 23, 55, 55, 55, &time.Location{}),
+			command:   "echo bye world",
+		},
+		{
+			directory: "/dir2",
+			timestamp: time.Date(2020, 1, 2, 1, 0, 2, 0, &time.Location{}),
+			command:   "printf '%s..' bye",
+		},
+		{
+			directory: "/home/user",
+			timestamp: time.Date(2020, 1, 1, 1, 1, 2, 0, &time.Location{}),
+			command:   "printf 'sneaky %s' hello",
+		},
+		{
+			directory: "/home/user2",
+			timestamp: time.Date(2020, 1, 2, 1, 2, 2, 0, &time.Location{}),
+			command: `cat<<"EOF" > test
+			bla hello
+			EOF
+			`,
+		},
+	}
+
+	for _, datum := range data {
+		history, err := storage.NewHistory(
+			datum.command,
+			storage.SetDirectory(datum.directory),
+			storage.SetTime(datum.timestamp),
+		)
+		assert.Nil(t, err)
+		err = store.Add(history)
+		assert.Nil(t, err)
+	}
+
+	testCases := []struct {
+		matches    []string
+		matchCount int
+	}{
+		{
+			matches:    []string{"hello"},
+			matchCount: 3,
+		},
+		{
+			matches: []string{
+				"hello", "world",
+			},
+			matchCount: 1,
+		},
+	}
+
+	for _, testCase := range testCases {
+		history, err := store.Greps(testCase.matches...)
+		assert.Nil(t, err)
+		fmt.Printf("HISTORY LENGTH::: %d \n", len(history))
+		for _, h := range history {
+			fmt.Printf("----> %s\n", h)
+		}
+		assert.Equal(t, testCase.matchCount, len(history))
+	}
+}
+
 func TestAnother(t *testing.T) {
 	dbFile := "my.db"
 

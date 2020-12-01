@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"regexp"
 
 	"github.com/spf13/cobra"
 	"github.com/svanellewee/historian/pkg/storage"
@@ -23,18 +22,7 @@ var searchCmd = &cobra.Command{
 		}
 		defer store.Close()
 
-		filters := make([]storage.FilterFunction, 0, 1)
-		for _, arg := range args {
-			filters = append(filters, func(directoryName []byte, key []byte, value []byte) bool {
-				re, err := regexp.Compile(arg)
-				if err != nil {
-					return false
-				}
-				return re.Find(value) != nil
-			})
-		}
-
-		history, err := store.All(filters...)
+		history, err := store.Greps(args...)
 		if err != nil {
 			return err
 		}

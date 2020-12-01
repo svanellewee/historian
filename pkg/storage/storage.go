@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -378,6 +379,29 @@ func oneBucketForDay(name []byte, bucket *bolt.Bucket, timestamp time.Time, hand
 		}
 	}
 	return nil
+}
+
+// Greps applies multple potential regexes to the command history
+func (s *Store) Greps(regexes ...string) ([]History, error) {
+	filter := func(bucketName []byte, key []byte, value []byte) bool {
+		result := false
+		for _, regex := range regexes {
+			re, err := regexp.Compile(regex)
+			if err != nil {
+				return false
+			}
+			match := re.Find(value)
+			if len(match) > 0 {
+				result = true
+				continue
+			} else {
+				result = false
+				break
+			}
+		}
+		return result
+	}
+	return s.All(filter)
 }
 
 // AllBucketsForDay something something...also does a today function
